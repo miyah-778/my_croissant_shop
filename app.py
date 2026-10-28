@@ -105,8 +105,7 @@ with tab_customer:
         )
         st.caption(
             "Please avoid sharing names, phone numbers, "
-            "or other personal information. Written comments "
-            "are analyzed using AI."
+            "or other personal information"
         )
         submitted = st.form_submit_button(
             "Send Feedback",
