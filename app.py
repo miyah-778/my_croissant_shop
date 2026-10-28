@@ -1,4 +1,3 @@
-
 import os
 import pandas as pd
 import plotly.express as px
@@ -10,7 +9,12 @@ TITLE = "Croissant Corner"
 LOGO = "logo.png"
 CSV_FILE = "feedback.csv"
 LOW_RATING, HIGH_RATING = 2, 4
-LABELS = ["product_quality", "service_experience", "pricing", "other"]
+LABELS = [
+    "product_quality",
+    "service_experience",
+    "pricing",
+    "other"
+]
 COLORS = {
     "product_quality": "#D9A441",
     "service_experience": "#7C9B86",
@@ -23,18 +27,44 @@ COLUMNS = [
 ]
 
 # ---- Styling -----------------------------------------------------------
-st.set_page_config(page_title=TITLE, page_icon=LOGO, layout="wide")
+st.set_page_config(
+    page_title=TITLE,
+    page_icon=LOGO,
+    layout="wide"
+)
+
 st.markdown("""
 <style>
-.stApp {background-color: #FFFDF9;}
-.block-container {max-width: 1150px; padding-top: 2rem;}
+.stApp {
+    background-color: #FFFDF9;
+}
+
+.block-container {
+    max-width: 1150px;
+    padding-top: 2rem;
+}
+
 [data-testid="stMetric"] {
     background: #F7F1E8;
     border: 1px solid #E9DFD1;
-    padding: 18px;
+    padding: 14px;
     border-radius: 12px;
 }
-[data-testid="stMetric"] * {color: #303030 !important;}
+
+[data-testid="stMetric"] * {
+    color: #303030 !important;
+}
+
+[data-testid="stMetricValue"] {
+    font-size: 1.45rem !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: 0.92rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -79,15 +109,19 @@ with tab_customer:
             "are analyzed using AI."
         )
         submitted = st.form_submit_button(
-            "Send Feedback", type="primary"
+            "Send Feedback",
+            type="primary"
         )
 
     if submitted:
         comment = comment.strip()
         if not comment and stars is None:
-            st.error("Please provide a rating, a comment, or both.")
+            st.error(
+                "Please provide a rating, a comment, or both."
+            )
         else:
             rating = stars + 1 if stars is not None else None
+            # Classify written comments using the LLM
             if comment:
                 try:
                     result = label_comment(comment)
@@ -100,7 +134,9 @@ with tab_customer:
                 label = result["label"]
                 is_complaint = result["is_complaint"]
                 multiple_issues = result["multiple_issues"]
-                classification_error = result.get("classification_error", False)
+                classification_error = result.get(
+                    "classification_error", False
+                )
             else:
                 # Rating-only feedback has no text to classify
                 label = None
@@ -114,21 +150,32 @@ with tab_customer:
             # Rule 1: Rating and comment contradict
             if rating is not None and comment:
                 if is_complaint and rating >= HIGH_RATING:
-                    reasons.append("High rating with a complaint")
+                    reasons.append(
+                        "High rating with a complaint"
+                    )
                 elif not is_complaint and rating <= LOW_RATING:
-                    reasons.append("Low rating without a complaint")
+                    reasons.append(
+                        "Low rating without a complaint"
+                    )
 
             # Rule 2: Other category
             if comment and label == "other":
                 reasons.append("Other or unclear topic")
 
-            # Rule 3: Multiple equally important problems
+            # Rule 3: Multiple equally important complaints
             if multiple_issues:
-                reasons.append("Multiple important complaints")
+                reasons.append(
+                    "Multiple important complaints"
+                )
+
             if classification_error:
-                reasons.append("AI classification needs verification")
+                reasons.append(
+                    "AI classification needs verification"
+                )
 
             manual_review = len(reasons) > 0
+
+            # Save feedback
             new_row = pd.DataFrame([{
                 "comment": comment,
                 "rating": rating,
@@ -139,10 +186,14 @@ with tab_customer:
                 "review_reason": "; ".join(reasons)
             }])
 
-            df = pd.concat([df, new_row], ignore_index=True)
+            df = pd.concat(
+                [df, new_row],
+                ignore_index=True
+            )
             df.to_csv(CSV_FILE, index=False)
-
-            st.success("Thank you! Your feedback has been received.")
+            st.success(
+                "Thank you! Your feedback has been received."
+            )
             if comment:
                 st.caption(
                     "Your comment was categorized using AI. "
@@ -151,13 +202,19 @@ with tab_customer:
 
 # ---- Owner tab ---------------------------------------------------------
 with tab_owner:
-    st.subheader("What causes customer dissatisfaction?")
-    st.caption("Identify recurring complaints and prioritize bakery improvements.")
-
+    st.subheader(
+        "What causes customer dissatisfaction?"
+    )
+    st.caption(
+        "Identify recurring complaints and prioritize "
+        "bakery improvements."
+    )
     if df.empty:
-        st.info("No feedback yet. Add a customer review to begin.")
+        st.info(
+            "No feedback yet. Add a customer review to begin."
+        )
     else:
-        # Count only complaints in actionable categories
+        # Count only actionable complaints
         complaints = df[
             df["is_complaint"]
             & df["label"].isin(LABELS[:3])
@@ -165,29 +222,50 @@ with tab_owner:
 
         counts = complaints["label"].value_counts()
 
-        biggest_issue = (
-            counts.idxmax().replace("_", " ").title()
-            if not counts.empty else "Not available"
-        )
+        # Show all categories tied for the biggest complaint
+        if counts.empty:
+            biggest_issue = "Not available"
+        else:
+            top_count = counts.max()
+            tied = [
+                label.replace("_", " ").title()
+                for label in LABELS[:3]
+                if counts.get(label, 0) == top_count
+            ]
+            biggest_issue = ", ".join(tied)
 
         review_flag = df["manual_review"]
+        average_rating = df["rating"].mean()
 
-        # ---- Three key metrics ----------------------------------------
-        m1, m2, m3 = st.columns(3)
-
-        m1.metric("Total Feedback", len(df))
-        m2.metric("Biggest Complaint", biggest_issue)
-        m3.metric("Needs Manual Review", int(review_flag.sum()))
-
-        st.caption(
-            "Biggest complaint is based on written feedback "
-            "classified as dissatisfaction. Rating-only feedback "
-            "is included in total feedback but not complaint categories."
+        # ---- Four summary metrics ------------------------------------
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(
+            "Total Feedback",
+            f"{len(df):,}"
         )
-
+        m2.metric(
+            "Average Rating",
+            f"{average_rating:.1f} / 5"
+            if pd.notna(average_rating)
+            else "N/A"
+        )
+        m3.metric(
+            "Biggest Complaint",
+            biggest_issue,
+            help=(
+                "Based only on written feedback classified "
+                "as a complaint in product quality, service "
+                "experience, or pricing. Tied categories are "
+                "all shown. Rating-only feedback is excluded."
+            )
+        )
+        m4.metric(
+            "Needs Manual Review",
+            int(review_flag.sum())
+        )
         st.divider()
 
-        # ---- Two graphs -----------------------------------------------
+        # ---- Two graphs ----------------------------------------------
         c1, c2 = st.columns(2)
 
         with c1:
@@ -195,7 +273,10 @@ with tab_owner:
             if complaints.empty:
                 st.info("No classified complaints yet.")
             else:
-                chart_data = counts.rename_axis("label").reset_index(name="count")
+                chart_data = counts.rename_axis(
+                    "label"
+                ).reset_index(name="count")
+
                 chart_data["category"] = (
                     chart_data["label"]
                     .str.replace("_", " ")
@@ -209,18 +290,22 @@ with tab_owner:
                     text="count",
                     color_discrete_map=COLORS
                 )
-
                 fig.update_layout(
                     template="plotly_white",
                     showlegend=False,
                     xaxis_title=None,
                     yaxis_title="Number of complaints"
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
         with c2:
             st.subheader("Average Stars by Complaint")
-            rated = complaints.dropna(subset=["rating"])
+            rated = complaints.dropna(
+                subset=["rating"]
+            )
             if rated.empty:
                 st.info("No rated complaints yet.")
             else:
@@ -250,20 +335,27 @@ with tab_owner:
                     yaxis_title="Average stars",
                     yaxis_range=[0, 5]
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
-        # ---- Manual review --------------------------------------------
+        # ---- Manual review -------------------------------------------
         st.divider()
-        st.subheader("Comments Needing Manual Review")
-        st.caption(
-            "Flagged for rating/comment contradictions, "
-            "other topics, or multiple important complaints."
+        st.subheader(
+            "Comments Needing Manual Review",
+            help=(
+                "Flagged for rating/comment contradictions, "
+                "other or unclear topics, multiple important "
+                "complaints, or AI classification failures."
+            )
         )
 
         flagged = df[review_flag]
-
         if flagged.empty:
-            st.success("No feedback currently needs manual review.")
+            st.success(
+                "No feedback currently needs manual review."
+            )
         else:
             for _, row in flagged.iterrows():
                 rating_text = (
@@ -272,7 +364,9 @@ with tab_owner:
                     else "No rating"
                 )
                 label_text = (
-                    str(row["label"]).replace("_", " ").title()
+                    str(row["label"])
+                    .replace("_", " ")
+                    .title()
                     if pd.notna(row["label"])
                     else "Unclassified"
                 )
@@ -285,12 +379,12 @@ with tab_owner:
                     and str(row["comment"]).strip()
                     else "(No written comment)"
                 )
-
                 st.caption(
                     f"Review reason: {row['review_reason']}"
                 )
                 st.divider()
 
+        # ---- All feedback --------------------------------------------
         with st.expander("View All Feedback"):
             st.dataframe(
                 df,
@@ -310,13 +404,3 @@ with tab_owner:
             "may disappear after an app restart. "
             "Download the CSV to preserve your records."
         )
-
-# ---- Model limitations -------------------------------------------------
-with st.expander("About AI Classification"):
-    st.write(
-        "This app uses an LLM to identify feedback topics and "
-        "potential complaints. AI may misinterpret sarcasm, "
-        "mixed feedback, or ambiguous comments. Incorrect "
-        "classification could cause the bakery to prioritize "
-        "the wrong improvements and waste resources."
-    )
